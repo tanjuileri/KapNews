@@ -10,7 +10,7 @@ using System.IO;
 
 namespace KapNews
 {
-    public class Function1
+    public class KapNews
     {
         [FunctionName("KapNews")]
         public void Run([TimerTrigger("*/5 * * * * *")] TimerInfo myTimer, ILogger log)
