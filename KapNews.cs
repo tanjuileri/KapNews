@@ -7,24 +7,22 @@ using Microsoft.Azure.WebJobs.Host;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json.Linq;
 using System.IO;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace KapNews
 {
     public class KapNews
     {
         [FunctionName("KapNews")]
-        public void Run([TimerTrigger("*/5 * * * * *")] TimerInfo myTimer, ILogger log)
+        public void Run([TimerTrigger("* */5 * * * *")] TimerInfo myTimer, ILogger log)
         {
-            string s= null;
-            int i = 0;
+            string envVariable = System.Environment.GetEnvironmentVariable("LastSentKapIds", EnvironmentVariableTarget.Process);
+            List<int> idList = new List<int>();
 
-            if (File.Exists("LastKapId.txt"))
-                s = File.ReadAllText("LastKapId.txt");
+            if (!string.IsNullOrEmpty(envVariable))
+                idList = envVariable.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(r => Convert.ToInt32(r)).ToList();
 
-            if (!string.IsNullOrWhiteSpace(s))
-                i = Convert.ToInt32(s.Trim());
-
-            Console.WriteLine(i);
             var httpClient = new HttpClient();
             var result = httpClient.GetStringAsync("https://www.kap.org.tr/tr/api/disclosures").Result;
             JArray arr = JArray.Parse(result);
@@ -36,6 +34,11 @@ namespace KapNews
 
                 if (obj["title"].Value<string>() == "Yeni Ýþ Ýliþkisi" || obj["summary"].Value<string>() == "Yeni Ýþ Ýliþkisi")
                 {
+                    var kapId = obj["disclosureIndex"].Value<int>();
+
+                    if (idList.Contains(kapId))
+                        continue;
+
                     var client = new SmtpClient("smtp.office365.com", 587)
                     {
                         Credentials = new NetworkCredential("kaphaberleri@hotmail.com", "kaphaber!."),
@@ -43,7 +46,6 @@ namespace KapNews
                     };
 
                     MailAddress from = new MailAddress("kaphaberleri@hotmail.com", "kaphaberleri");
-
                     foreach (var item in mailList)
                     {
                         MailAddress to = new MailAddress(item);
@@ -52,11 +54,12 @@ namespace KapNews
                         myMail.Body = $"Bu mail Tanju ve Cenk'in FAKÝRLERE hayratýdýr.";
                         client.Send(myMail);
                     }
+
+                    idList.Add(kapId);
                 }
             }
 
-            File.WriteAllText("LastKapId.txt", (i + 1).ToString());
-
+            System.Environment.SetEnvironmentVariable("LastSentKapIds", string.Join(',', idList), EnvironmentVariableTarget.Process);
         }
     }
 }
